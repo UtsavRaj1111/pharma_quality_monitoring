@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>💊 Medicine Monitor</title>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:#f5f7fa;color:#2d3748;min-height:100vh}
+.container{max-width:1200px;margin:24px auto;padding:18px}
+.navbar{background:#fff;padding:14px 20px;border-radius:12px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 6px 20px rgba(16,24,40,0.06);margin-bottom:18px}
+.logo{font-weight:700;color:#2563eb;font-size:1.25rem;cursor:pointer}
+.predict-btn{background:#2563eb;color:#fff;border:none;padding:10px 16px;border-radius:10px;cursor:pointer}
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
+.card{background:#fff;padding:16px;border-radius:12px;box-shadow:0 6px 20px rgba(16,24,40,0.04);border-left:4px solid transparent}
+.card .title{font-size:0.75rem;color:#667085;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em}
+.card .value{font-weight:700;font-size:1.25rem;color:#0f172a}
+.card.temperature{border-left-color:#f87171}
+.card.humidity{border-left-color:#60a5fa}
+.card.gas{border-left-color:#f59e0b}
+.card.light{border-left-color:#fbbf24}
+.card.prediction{border-left-color:#34d399}
+.table-container{background:#fff;border-radius:12px;box-shadow:0 6px 20px rgba(16,24,40,0.04);overflow:hidden;margin-bottom:18px}
+.table-header{padding:12px 16px;border-bottom:1px solid #eef2ff}
+table{width:100%;border-collapse:collapse}
+th,td{padding:12px 16px;text-align:left;border-bottom:1px solid #f1f5f9}
+th{background:#fbfdff;color:#334155;font-size:0.78rem;text-transform:uppercase;letter-spacing:0.06em}
+.status-ok{background:#dcfce7;color:#14532d;padding:6px 10px;border-radius:999px;font-weight:600;font-size:0.78rem}
+.status-spoiled{background:#fee2e2;color:#991b1b;padding:6px 10px;border-radius:999px;font-weight:600;font-size:0.78rem}
+
+/* ✅ Fixed chart area */
+.charts{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+  gap:18px;
+  margin-bottom:18px;
+  align-items:stretch;
+}
+.chart-card{
+  background:#fff;
+  padding:14px;
+  border-radius:12px;
+  box-shadow:0 6px 20px rgba(16,24,40,0.04);
+  height:280px;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+}
+.chart-card h4{
+  margin-bottom:8px;
+  font-size:0.95rem;
+  color:#334155;
+}
+.chart-card canvas{
+  flex-grow:1;
+  max-height:220px;
+}
+
+.refresh-indicator{display:flex;gap:8px;align-items:center;color:#6b7280;margin-bottom:12px;font-size:0.9rem}
+.refresh-icon{display:inline-block;animation:spin 2s linear infinite}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+
+/* Sliding Prediction Form */
+.prediction-area{
+  position: fixed;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  max-width: 680px;
+  background: #fff;
+  padding: 18px;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(16,24,40,0.06);
+  transition: top 0.4s ease;
+  z-index: 1000;
+}
+.prediction-area.show{top: 60px;}
+#overlay{
+  display:none;
+  position:fixed;
+  top:0; left:0;
+  width:100%; height:100%;
+  background: rgba(0,0,0,0.4);
+  z-index: 900;
+}
+
+.form-row{margin-bottom:12px}
+label{display:block;color:#475569;margin-bottom:6px;font-weight:600}
+input[type=number]{width:100%;padding:10px;border-radius:10px;border:1px solid #e6eef8}
+.submit-btn{width:100%;padding:12px;background:linear-gradient(90deg,#10b981,#059669);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700}
+.back-btn{margin-top:12px;background:#64748b;color:#fff;padding:8px 12px;border-radius:8px;border:none;cursor:pointer}
+.result-ok{margin-top:12px;padding:14px;border-radius:10px;background:#dcfce7;color:#064e3b;font-weight:700;text-align:center}
+.result-spoiled{margin-top:12px;padding:14px;border-radius:10px;background:#fee2e2;color:#7f1d1d;font-weight:700;text-align:center}
+
+@media (max-width:760px){
+  .cards-grid{grid-template-columns:1fr}
+  .charts{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="navbar">
+  <div class="logo" id="themeToggle">💊 Medicine Monitor</div>
+  <div><button class="predict-btn" id="openPredict">Predict</button></div>
+</div>
+
+<div class="refresh-indicator"><span class="refresh-icon">🔄</span><span>Auto-refreshing data — live updates</span></div>
+
+<div class="cards-grid">
+  <div class="card temperature"><div class="title">Temperature</div><div class="value" id="card-temp">{{ latest.temperature if latest else '-' }}</div></div>
+  <div class="card humidity"><div class="title">Humidity</div><div class="value" id="card-hum">{{ latest.humidity if latest else '-' }}</div></div>
+  <div class="card gas"><div class="title">Gas Level</div><div class="value" id="card-gas">{{ latest.gas_level if latest else '-' }}</div></div>
+  <div class="card light"><div class="title">Light</div><div class="value" id="card-light">{{ latest.light if latest else '-' }}</div></div>
+  <div class="card prediction"><div class="title">Prediction Status</div><div class="value" id="card-pred">{{ latest.prediction if latest else '-' }}</div></div>
+</div>
+
+<div class="table-container">
+<div class="table-header"><strong>Recent Records</strong></div>
+<table>
+<thead><tr><th>Timestamp</th><th>Temperature</th><th>Humidity</th><th>Light</th><th>Gas Level</th><th>Prediction</th></tr></thead>
+<tbody id="records-body">{% for r in records %}
+<tr>
+<td>{{ r.timestamp }}</td><td>{{ r.temperature }}</td><td>{{ r.humidity }}</td><td>{{ r.light }}</td><td>{{ r.gas_level }}</td>
+<td>{% if r.prediction=='OK' %}<span class="status-ok">OK</span>{% else %}<span class="status-spoiled">Spoiled</span>{% endif %}</td>
+</tr>{% endfor %}</tbody>
+</table>
+</div>
+
+<div class="charts" id="charts-container">
+  <div class="chart-card"><h4>Temperature Trend</h4><canvas id="tempChart" height="140"></canvas></div>
+  <div class="chart-card"><h4>Humidity Trend</h4><canvas id="humChart" height="140"></canvas></div>
+</div>
+
+<div id="overlay"></div>
+
+<div class="prediction-area" id="prediction-area">
+<h3>Medicine Condition Prediction</h3>
+<form id="predict-form" method="POST" action="{{ url_for('predict') }}">
+<div class="form-row"><label for="temperature">Temperature (°C)</label><input name="temperature" id="temperature" type="number" step="0.1" required></div>
+<div class="form-row"><label for="humidity">Humidity (%)</label><input name="humidity" id="humidity" type="number" step="0.1" required></div>
+<div class="form-row"><label for="light">Light (lux)</label><input name="light" id="light" type="number" step="0.1" required></div>
+<div class="form-row"><label for="gas_level">Gas Level (ppm)</label><input name="gas_level" id="gas_level" type="number" step="0.1" required></div>
+<button class="submit-btn" type="submit" id="predict-submit">Predict Condition</button>
+</form>
+<button class="back-btn" id="closePredict">Close</button>
+</div>
+
+<script id="labels-data" type="application/json">{{ labels|tojson }}</script>
+<script id="temps-data" type="application/json">{{ temps|tojson }}</script>
+<script id="hums-data" type="application/json">{{ hums|tojson }}</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+const openBtn=document.getElementById('openPredict'),closeBtn=document.getElementById('closePredict'),predictArea=document.getElementById('prediction-area'),overlay=document.getElementById('overlay'),predictForm=document.getElementById('predict-form'),themeToggle=document.getElementById('themeToggle');
+
+openBtn.addEventListener('click',()=>{predictArea.classList.add('show');overlay.style.display='block';window.scrollTo({top:0,behavior:'smooth'});});
+closeBtn.addEventListener('click',()=>{predictArea.classList.remove('show');overlay.style.display='none';});
+overlay.addEventListener('click',()=>{predictArea.classList.remove('show');overlay.style.display='none';});
+
+let darkMode=false;themeToggle.addEventListener('click',()=>{darkMode=!darkMode;document.body.style.background=darkMode?'#1e293b':'#f5f7fa';document.body.style.color=darkMode?'#f1f5f9':'#2d3748';document.querySelectorAll('.card').forEach(c=>{c.style.background=darkMode?'#334155':'#fff';c.style.color=darkMode? '#f1f5f9':'#0f172a'});document.querySelectorAll('.table-container').forEach(t=>{t.style.background=darkMode?'#334155':'#fff';t.style.color=darkMode? '#f1f5f9':'#0f172a'});});
+
+let labels=JSON.parse(document.getElementById('labels-data').textContent);
+let temps=JSON.parse(document.getElementById('temps-data').textContent);
+let hums=JSON.parse(document.getElementById('hums-data').textContent);
+const tempChart=new Chart(document.getElementById('tempChart').getContext('2d'),{type:'line',data:{labels:labels,datasets:[{label:'Temperature (°C)',data:temps,borderColor:'#f97373',backgroundColor:'rgba(249,115,115,0.08)',tension:0.4}]},options:{responsive:true,maintainAspectRatio:false}});
+const humChart=new Chart(document.getElementById('humChart').getContext('2d'),{type:'line',data:{labels:labels,datasets:[{label:'Humidity (%)',data:hums,borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,0.08)',tension:0.4}]},options:{responsive:true,maintainAspectRatio:false}});
+
+predictForm.addEventListener('submit',async function(e){
+e.preventDefault();const formData=new FormData(this);
+try{
+const resp=await fetch(this.action,{method:'POST',body:formData});
+if(resp.ok){
+const html=await resp.text();const parser=new DOMParser();const doc=parser.parseFromString(html,'text/html');
+const latestTemp=parseFloat(doc.getElementById('card-temp').textContent);
+const latestHum=parseFloat(doc.getElementById('card-hum').textContent);
+const latestLabel=new Date().toLocaleTimeString();
+tempChart.data.labels.push(latestLabel);
+tempChart.data.datasets[0].data.push(latestTemp);
+tempChart.update();
+humChart.data.labels.push(latestLabel);
+humChart.data.datasets[0].data.push(latestHum);
+humChart.update();
+document.getElementById('card-temp').textContent=latestTemp;
+document.getElementById('card-hum').textContent=latestHum;
+document.getElementById('card-gas').textContent=doc.getElementById('card-gas').textContent;
+document.getElementById('card-light').textContent=doc.getElementById('card-light').textContent;
+document.getElementById('card-pred').textContent=doc.getElementById('card-pred').textContent;
+const tbody=document.getElementById('records-body');
+const tr=document.createElement('tr');
+tr.innerHTML=`<td>${new Date().toLocaleString()}</td>
+<td>${latestTemp}</td>
+<td>${latestHum}</td>
+<td>${document.getElementById('light').value}</td>
+<td>${document.getElementById('gas_level').value}</td>
+<td>${doc.getElementById('card-pred').textContent==='OK'?'<span class="status-ok">OK</span>':'<span class="status-spoiled">Spoiled</span>'}</td>`;
+tbody.appendChild(tr);
+predictArea.classList.remove('show');overlay.style.display='none';
+}else alert('Prediction failed.');
+}catch(err){console.error(err);alert('Error sending prediction.');}
+});
+
+async function fetchDataAndUpdate(){try{const resp=await fetch('{{ url_for("data") }}');if(!resp.ok) return;const js=await resp.json();
+document.getElementById('card-temp').textContent=js.latest.temperature??'-';
+document.getElementById('card-hum').textContent=js.latest.humidity??'-';
+document.getElementById('card-gas').textContent=js.latest.gas_level??'-';
+document.getElementById('card-light').textContent=js.latest.light??'-';
+document.getElementById('card-pred').textContent=js.latest.prediction??'-';
+}catch(err){console.error('Data fetch error',err);}}
+setInterval(fetchDataAndUpdate,30000);
+});
+</script>
+</body>
+</html>
